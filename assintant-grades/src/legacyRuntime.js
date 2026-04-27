@@ -1,4 +1,12 @@
 /* eslint-disable no-var */
+import {
+  fetchAsignaturas,
+  fetchCarreras,
+  fetchDocentesPorAsignatura,
+  fetchEstudiantesPorAsignatura,
+  fetchPaos,
+  loginSeguridad
+} from './soapInterop';
 
 export function initLegacyRuntime() {
   if (window.__espochLegacyInit) return;
@@ -115,6 +123,7 @@ export function initLegacyRuntime() {
     { email: 'coordinador@uni.edu', password: '1234', role: 'coordinador', name: 'María Coordinadora' }
   ];
   var ROLE_LABEL = { admin: 'Administrador', docente: 'Docente', coordinador: 'Coordinador' };
+  var SOAP_CACHE = { carreras: null, asignaturas: {}, docentes: {}, estudiantes: {} };
 
   var DEFAULT_STATE = {
     courseConfig: { periodoAcademico: '', facultad: 'SEDE ORELLANA', carrera: '', asignatura: '', docente: '', pao: '', aporte: 'FIN DE CICLO' },
@@ -307,13 +316,17 @@ export function initLegacyRuntime() {
     });
   }
 
-  function doLogin() {
+  async function doLogin() {
     var emailEl = document.getElementById('auth-email');
     var passEl = document.getElementById('auth-pass');
     var msgEl = document.getElementById('auth-msg');
     var email = (emailEl && emailEl.value || '').trim().toLowerCase();
     var pass = (passEl && passEl.value || '').trim();
-    var found = USERS.find(function (u) { return u.email === email && u.password === pass; });
+    var found = null;
+    try {
+      found = await loginSeguridad(email, pass);
+    } catch (err) {}
+    if (!found) found = USERS.find(function (u) { return u.email === email && u.password === pass; });
     if (!found) {
       if (msgEl) msgEl.textContent = 'Credenciales inválidas. Revise correo y clave.';
       return;
@@ -349,7 +362,7 @@ export function initLegacyRuntime() {
     if (passEl) passEl.value = '';
   }
 
-  function onCarreraChange() {
+  async function onCarreraChange() {
     var carreraValue = document.getElementById('cfg-carrera').value;
     var paoSelect = document.getElementById('cfg-pao');
     var asigSelect = document.getElementById('cfg-asignatura');
@@ -360,8 +373,22 @@ export function initLegacyRuntime() {
     if (!carreraValue) return;
     var carreraData = DB_ESPOCH[carreraValue];
     CAREER_RACS = carreraData.racs || [];
-    paoSelect.innerHTML += '<option value="NIVELACIÓN">NIVELACIÓN</option>';
-    for (var p = 1; p <= carreraData.maxPao; p++) paoSelect.innerHTML += '<option value="' + p + '">PAO ' + p + '</option>';
+    var paos = [];
+    try {
+      if (!SOAP_CACHE.carreras) SOAP_CACHE.carreras = await fetchCarreras();
+      paos = await fetchPaos(carreraValue);
+    } catch (err) {}
+    if (!paos || paos.length === 0) {
+      paoSelect.innerHTML += '<option value="NIVELACIÓN">NIVELACIÓN</option>';
+      for (var p = 1; p <= carreraData.maxPao; p++) paoSelect.innerHTML += '<option value="' + p + '">PAO ' + p + '</option>';
+    } else {
+      var unique = {};
+      paos.forEach(function (value) { unique[value] = true; });
+      Object.keys(unique).forEach(function (value) {
+        var label = String(value).toUpperCase() === 'NIVELACIÓN' ? 'NIVELACIÓN' : ('PAO ' + value);
+        paoSelect.innerHTML += '<option value="' + value + '">' + label + '</option>';
+      });
+    }
     paoSelect.disabled = false;
     STATE.courseConfig.carrera = carreraValue;
     STATE.selectedRACIds = [];
@@ -370,21 +397,44 @@ export function initLegacyRuntime() {
     save();
   }
 
-  function onPaoChange() {
+  async function hydrateCarreraOptions() {
+    var select = document.getElementById('cfg-carrera');
+    if (!select) return;
+    try {
+      if (!SOAP_CACHE.carreras) SOAP_CACHE.carreras = await fetchCarreras();
+      if (!SOAP_CACHE.carreras || SOAP_CACHE.carreras.length === 0) return;
+      var current = select.value;
+      var unique = {};
+      SOAP_CACHE.carreras.forEach(function (name) { unique[name] = true; });
+      var options = Object.keys(unique).sort();
+      select.innerHTML = '<option value="">-- Seleccione la carrera --</option>' +
+        options.map(function (name) { return '<option value="' + name + '">' + name + '</option>'; }).join('');
+      if (current && unique[current]) select.value = current;
+    } catch (err) {}
+  }
+
+  async function onPaoChange() {
     var carreraValue = document.getElementById('cfg-carrera').value;
     var paoValue = document.getElementById('cfg-pao').value;
     var asigSelect = document.getElementById('cfg-asignatura');
     asigSelect.innerHTML = '<option value="">-- Seleccione Asignatura --</option>';
     if (!paoValue) { asigSelect.disabled = true; return; }
-    var materias = (DB_ESPOCH[carreraValue] && DB_ESPOCH[carreraValue].malla[paoValue]) || [];
+    var materias = [];
+    var cacheKey = carreraValue + '::' + paoValue;
+    try {
+      if (!SOAP_CACHE.asignaturas[cacheKey]) SOAP_CACHE.asignaturas[cacheKey] = await fetchAsignaturas(carreraValue, paoValue);
+      materias = SOAP_CACHE.asignaturas[cacheKey];
+    } catch (err) {}
+    if (!materias || materias.length === 0) materias = (DB_ESPOCH[carreraValue] && DB_ESPOCH[carreraValue].malla[paoValue]) || [];
     materias.forEach(function (mat) { asigSelect.innerHTML += '<option value="' + mat + '">' + mat + '</option>'; });
     asigSelect.disabled = false;
     STATE.courseConfig.pao = paoValue;
     save();
   }
 
-  function onAsignaturaChange() {
+  async function onAsignaturaChange() {
     var carrera = document.getElementById('cfg-carrera').value;
+    var pao = document.getElementById('cfg-pao').value;
     var asignatura = document.getElementById('cfg-asignatura').value;
     STATE.courseConfig.asignatura = asignatura;
     if (!carrera || !asignatura) return;
@@ -401,12 +451,76 @@ export function initLegacyRuntime() {
       STATE.selectedRACIds = [];
       showToast('Esta asignatura no tiene mapeo automático de RAC/RAAU.', 'error');
     }
+    await loadDocenteFromOasis(true);
+    await loadStudentsFromOasis(true);
+
     STATE.activities = [];
     save();
     updateSidebar();
     syncActivitiesWithRAAU();
     renderRAAUList();
     renderSelectedSummary();
+  }
+
+  function selectedContext() {
+    return {
+      carrera: document.getElementById('cfg-carrera').value,
+      pao: document.getElementById('cfg-pao').value,
+      asignatura: document.getElementById('cfg-asignatura').value
+    };
+  }
+
+  async function loadDocenteFromOasis(silent) {
+    var ctx = selectedContext();
+    if (!ctx.carrera || !ctx.pao || !ctx.asignatura) {
+      if (!silent) showToast('Seleccione carrera, PAO y asignatura primero.', 'error');
+      return [];
+    }
+    var cacheKey = ctx.carrera + '::' + ctx.pao + '::' + ctx.asignatura;
+    try {
+      if (!SOAP_CACHE.docentes[cacheKey]) SOAP_CACHE.docentes[cacheKey] = await fetchDocentesPorAsignatura(ctx.carrera, ctx.pao, ctx.asignatura);
+    } catch (err) {}
+
+    var docentesSoap = SOAP_CACHE.docentes[cacheKey] || [];
+    STATE.teacherAssignments = STATE.teacherAssignments.filter(function (a) {
+      return !(a.carrera === ctx.carrera && a.pao === ctx.pao && a.asignatura === ctx.asignatura);
+    });
+    STATE.courseConfig.docente = docentesSoap.length > 0 ? docentesSoap[0].name : '';
+    docentesSoap.forEach(function (d) {
+      STATE.teacherAssignments.push({
+        id: 'asig_soap_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        docenteEmail: d.email || (String(d.name).toLowerCase().replace(/\s+/g, '.') + '@soap.local'),
+        docenteName: d.name,
+        carrera: ctx.carrera,
+        pao: ctx.pao,
+        asignatura: ctx.asignatura
+      });
+    });
+    save();
+    updateSidebar();
+    if (!silent) showToast(docentesSoap.length > 0 ? ('Se cargaron ' + docentesSoap.length + ' docentes desde OASIS.') : 'OASIS no devolvió docentes para esta asignatura.', docentesSoap.length > 0 ? 'success' : 'error');
+    return docentesSoap;
+  }
+
+  async function loadStudentsFromOasis(silent) {
+    var ctx = selectedContext();
+    if (!ctx.carrera || !ctx.pao || !ctx.asignatura) {
+      if (!silent) showToast('Seleccione carrera, PAO y asignatura primero.', 'error');
+      return [];
+    }
+    var cacheKey = ctx.carrera + '::' + ctx.pao + '::' + ctx.asignatura;
+    try {
+      if (!SOAP_CACHE.estudiantes[cacheKey]) SOAP_CACHE.estudiantes[cacheKey] = await fetchEstudiantesPorAsignatura(ctx.carrera, ctx.pao, ctx.asignatura);
+    } catch (err) {}
+    var estudiantesSoap = SOAP_CACHE.estudiantes[cacheKey] || [];
+    STATE.students = JSON.parse(JSON.stringify(estudiantesSoap));
+    persistActiveConfigData();
+    renderStudents();
+    renderGradeTable();
+    renderDashboard();
+    save();
+    if (!silent) showToast(estudiantesSoap.length > 0 ? ('Se cargaron ' + estudiantesSoap.length + ' estudiantes desde OASIS.') : 'OASIS no devolvió estudiantes para esta asignatura.', estudiantesSoap.length > 0 ? 'success' : 'error');
+    return estudiantesSoap;
   }
 
   var cfgStep = 0;
@@ -2260,10 +2374,13 @@ export function initLegacyRuntime() {
   window.coordDeleteRAAUItem = coordDeleteRAAUItem;
   window.coordTriggerExcel = coordTriggerExcel;
   window.coordImportExcel = coordImportExcel;
+  window.loadDocenteFromOasis = loadDocenteFromOasis;
+  window.loadStudentsFromOasis = loadStudentsFromOasis;
 
   var carrera = document.getElementById('cfg-carrera');
   var pao = document.getElementById('cfg-pao');
   var asig = document.getElementById('cfg-asignatura');
+  hydrateCarreraOptions();
   if (carrera) carrera.addEventListener('change', onCarreraChange);
   if (pao) pao.addEventListener('change', onPaoChange);
   if (asig) asig.addEventListener('change', onAsignaturaChange);

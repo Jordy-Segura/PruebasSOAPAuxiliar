@@ -1,0 +1,15 @@
+{
+  "name": "oasis-node-bridge",
+  "version": "1.0.0",
+  "description": "Bridge REST -> SOAP (.asmx) for OASIS",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "soap": "^1.1.7"
+  }
+}
