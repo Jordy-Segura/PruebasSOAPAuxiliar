@@ -109,6 +109,13 @@ export async function fetchAsignaturas(carrera, pao) {
     .filter(Boolean);
 }
 
+function normalizeRole(roleRaw) {
+  const value = String(roleRaw || "").toLowerCase();
+  if (value.includes("coord")) return "coordinador";
+  if (value.includes("admin")) return "admin";
+  return "docente";
+}
+
 export async function fetchPaos(carrera) {
   const result = await callCandidates(
     SOAP_ENDPOINTS.infoCarrera,
@@ -120,6 +127,66 @@ export async function fetchPaos(carrera) {
   const rows = extractRows(result.xml);
   return rows
     .map((row) => nodeText(row, ["PAO", "Pao", "Semestre", "Nivel", "nivel"]))
+    .filter(Boolean);
+}
+
+export async function fetchDocentesPorAsignatura(carrera, pao, asignatura) {
+  const result = await callCandidates(
+    SOAP_ENDPOINTS.infoCarrera,
+    [
+      "ConsultarDocentesAsignatura",
+      "ListarDocentesAsignatura",
+      "DocentesPorAsignatura",
+      "ObtenerDocenteAsignatura",
+      "GetDocentesAsignatura",
+    ],
+    { carrera, pao, asignatura }
+  );
+  if (!result) return [];
+
+  const rows = extractRows(result.xml);
+  return rows
+    .map((row) => {
+      const nombre = nodeText(row, ["Docente", "NombreDocente", "Nombres", "nombre"]);
+      const email = nodeText(row, ["Correo", "Email", "Mail", "correo"]);
+      if (!nombre && !email) return null;
+      return {
+        name: nombre || email,
+        email: email || "",
+        role: normalizeRole(nodeText(row, ["Rol", "Perfil", "rol"])),
+      };
+    })
+    .filter(Boolean);
+}
+
+export async function fetchEstudiantesPorAsignatura(carrera, pao, asignatura) {
+  const result = await callCandidates(
+    SOAP_ENDPOINTS.infoCarrera,
+    [
+      "ConsultarEstudiantesAsignatura",
+      "ListarEstudiantesAsignatura",
+      "EstudiantesPorAsignatura",
+      "GetEstudiantesAsignatura",
+      "ObtenerMatriculados",
+    ],
+    { carrera, pao, asignatura }
+  );
+  if (!result) return [];
+
+  const rows = extractRows(result.xml);
+  return rows
+    .map((row, idx) => {
+      const cedula = nodeText(row, ["Cedula", "Identificacion", "CI", "cedula"]);
+      const apellidos = nodeText(row, ["Apellidos", "Apellido", "apellidos"]);
+      const nombres = nodeText(row, ["Nombres", "Nombre", "nombres"]);
+      if (!cedula && !apellidos && !nombres) return null;
+      return {
+        id: "soap_" + (cedula || idx),
+        cedula: cedula || "",
+        apellidos: apellidos || "",
+        nombres: nombres || "",
+      };
+    })
     .filter(Boolean);
 }
 
@@ -143,7 +210,7 @@ export async function loginSeguridad(usuario, clave) {
 
   return {
     name: nombre || usuario,
-    role: (rol || "docente").toLowerCase(),
+    role: normalizeRole(rol),
     email: usuario,
   };
 }

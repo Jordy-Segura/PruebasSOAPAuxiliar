@@ -1,5 +1,12 @@
 /* eslint-disable no-var */
-import { fetchAsignaturas, fetchCarreras, fetchPaos, loginSeguridad } from './soapInterop';
+import {
+  fetchAsignaturas,
+  fetchCarreras,
+  fetchDocentesPorAsignatura,
+  fetchEstudiantesPorAsignatura,
+  fetchPaos,
+  loginSeguridad
+} from './soapInterop';
 
 export function initLegacyRuntime() {
   if (window.__espochLegacyInit) return;
@@ -116,7 +123,7 @@ export function initLegacyRuntime() {
     { email: 'coordinador@uni.edu', password: '1234', role: 'coordinador', name: 'María Coordinadora' }
   ];
   var ROLE_LABEL = { admin: 'Administrador', docente: 'Docente', coordinador: 'Coordinador' };
-  var SOAP_CACHE = { carreras: null, asignaturas: {} };
+  var SOAP_CACHE = { carreras: null, asignaturas: {}, docentes: {}, estudiantes: {} };
 
   var DEFAULT_STATE = {
     courseConfig: { periodoAcademico: '', facultad: 'SEDE ORELLANA', carrera: '', asignatura: '', docente: '', pao: '', aporte: 'FIN DE CICLO' },
@@ -425,8 +432,9 @@ export function initLegacyRuntime() {
     save();
   }
 
-  function onAsignaturaChange() {
+  async function onAsignaturaChange() {
     var carrera = document.getElementById('cfg-carrera').value;
+    var pao = document.getElementById('cfg-pao').value;
     var asignatura = document.getElementById('cfg-asignatura').value;
     STATE.courseConfig.asignatura = asignatura;
     if (!carrera || !asignatura) return;
@@ -443,6 +451,43 @@ export function initLegacyRuntime() {
       STATE.selectedRACIds = [];
       showToast('Esta asignatura no tiene mapeo automático de RAC/RAAU.', 'error');
     }
+    var cacheKey = carrera + '::' + pao + '::' + asignatura;
+    try {
+      if (!SOAP_CACHE.docentes[cacheKey]) SOAP_CACHE.docentes[cacheKey] = await fetchDocentesPorAsignatura(carrera, pao, asignatura);
+      if (!SOAP_CACHE.estudiantes[cacheKey]) SOAP_CACHE.estudiantes[cacheKey] = await fetchEstudiantesPorAsignatura(carrera, pao, asignatura);
+    } catch (err) {}
+
+    var docentesSoap = SOAP_CACHE.docentes[cacheKey] || [];
+    var estudiantesSoap = SOAP_CACHE.estudiantes[cacheKey] || [];
+
+    if (docentesSoap.length > 0) {
+      STATE.courseConfig.docente = docentesSoap[0].name;
+      docentesSoap.forEach(function (d) {
+        var exists = STATE.teacherAssignments.some(function (a) {
+          return a.docenteEmail === d.email && a.carrera === carrera && a.pao === pao && a.asignatura === asignatura;
+        });
+        if (!exists) {
+          STATE.teacherAssignments.push({
+            id: 'asig_soap_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+            docenteEmail: d.email || (String(d.name).toLowerCase().replace(/\s+/g, '.') + '@soap.local'),
+            docenteName: d.name,
+            carrera: carrera,
+            pao: pao,
+            asignatura: asignatura
+          });
+        }
+      });
+    }
+
+    if (estudiantesSoap.length > 0) {
+      STATE.students = JSON.parse(JSON.stringify(estudiantesSoap));
+      persistActiveConfigData();
+      renderStudents();
+      renderGradeTable();
+      renderDashboard();
+      showToast('Datos reales cargados: ' + estudiantesSoap.length + ' estudiantes y ' + docentesSoap.length + ' docentes.', 'success');
+    }
+
     STATE.activities = [];
     save();
     updateSidebar();
