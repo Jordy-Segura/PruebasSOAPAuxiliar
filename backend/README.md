@@ -27,5 +27,6 @@ Servidor en: `http://localhost:3000`
 ## Notas
 
 - El backend usa `soap` para invocar métodos `*Async` del cliente generado por WSDL.
-- Si los nombres exactos de métodos del OASIS difieren, ajusta `DEFAULT_METHODS` en `index.js`.
+- Si los nombres exactos de métodos/parámetros del OASIS difieren, ajusta `backend/oasis.config.json` (`candidates`, `args`, `responsePath`).
 - React nunca llama SOAP directamente; solo consume JSON de este backend.
+- `GET /api/meta` te devuelve métodos detectados por WSDL + configuración activa para ajustar el mapeo real.

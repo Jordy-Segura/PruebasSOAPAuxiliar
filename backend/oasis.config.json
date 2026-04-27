@@ -1,0 +1,56 @@
+{
+  "intents": {
+    "carreras": {
+      "wsdl": "infoGeneral",
+      "candidates": ["ConsultarCarreras", "ListarCarreras", "GetCarreras", "Carreras"],
+      "args": {},
+      "responsePath": ""
+    },
+    "paos": {
+      "wsdl": "infoCarrera",
+      "candidates": ["ConsultarPao", "ListarPao", "GetPao", "PaoPorCarrera"],
+      "args": {
+        "carrera": ["carrera", "nombreCarrera", "codCarrera"]
+      },
+      "responsePath": ""
+    },
+    "asignaturas": {
+      "wsdl": "infoCarrera",
+      "candidates": ["ConsultarAsignaturas", "ListarAsignaturas", "GetAsignaturas", "AsignaturasPorCarreraPao"],
+      "args": {
+        "carrera": ["carrera", "nombreCarrera", "codCarrera"],
+        "pao": ["pao", "nivel", "semestre", "periodo"]
+      },
+      "responsePath": ""
+    },
+    "docentes": {
+      "wsdl": "infoCarrera",
+      "candidates": ["ConsultarDocentesAsignatura", "ListarDocentesAsignatura", "DocentesPorAsignatura"],
+      "args": {
+        "carrera": ["carrera", "nombreCarrera", "codCarrera"],
+        "pao": ["pao", "nivel", "semestre", "periodo"],
+        "asignatura": ["asignatura", "materia", "codAsignatura"]
+      },
+      "responsePath": ""
+    },
+    "estudiantes": {
+      "wsdl": "infoCarrera",
+      "candidates": ["ConsultarEstudiantesAsignatura", "ListarEstudiantesAsignatura", "EstudiantesPorAsignatura", "ObtenerMatriculados"],
+      "args": {
+        "carrera": ["carrera", "nombreCarrera", "codCarrera"],
+        "pao": ["pao", "nivel", "semestre", "periodo"],
+        "asignatura": ["asignatura", "materia", "codAsignatura"]
+      },
+      "responsePath": ""
+    },
+    "login": {
+      "wsdl": "seguridad",
+      "candidates": ["ValidarUsuario", "Autenticar", "Login", "IniciarSesion"],
+      "args": {
+        "usuario": ["usuario", "login", "correo", "email"],
+        "clave": ["clave", "password", "contrasena"]
+      },
+      "responsePath": ""
+    }
+  }
+}
