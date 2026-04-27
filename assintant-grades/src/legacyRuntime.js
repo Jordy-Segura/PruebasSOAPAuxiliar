@@ -460,32 +460,30 @@ export function initLegacyRuntime() {
     var docentesSoap = SOAP_CACHE.docentes[cacheKey] || [];
     var estudiantesSoap = SOAP_CACHE.estudiantes[cacheKey] || [];
 
-    if (docentesSoap.length > 0) {
-      STATE.courseConfig.docente = docentesSoap[0].name;
-      docentesSoap.forEach(function (d) {
-        var exists = STATE.teacherAssignments.some(function (a) {
-          return a.docenteEmail === d.email && a.carrera === carrera && a.pao === pao && a.asignatura === asignatura;
-        });
-        if (!exists) {
-          STATE.teacherAssignments.push({
-            id: 'asig_soap_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-            docenteEmail: d.email || (String(d.name).toLowerCase().replace(/\s+/g, '.') + '@soap.local'),
-            docenteName: d.name,
-            carrera: carrera,
-            pao: pao,
-            asignatura: asignatura
-          });
-        }
+    STATE.teacherAssignments = STATE.teacherAssignments.filter(function (a) {
+      return !(a.carrera === carrera && a.pao === pao && a.asignatura === asignatura);
+    });
+    STATE.courseConfig.docente = docentesSoap.length > 0 ? docentesSoap[0].name : '';
+    docentesSoap.forEach(function (d) {
+      STATE.teacherAssignments.push({
+        id: 'asig_soap_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        docenteEmail: d.email || (String(d.name).toLowerCase().replace(/\s+/g, '.') + '@soap.local'),
+        docenteName: d.name,
+        carrera: carrera,
+        pao: pao,
+        asignatura: asignatura
       });
-    }
+    });
 
-    if (estudiantesSoap.length > 0) {
-      STATE.students = JSON.parse(JSON.stringify(estudiantesSoap));
-      persistActiveConfigData();
-      renderStudents();
-      renderGradeTable();
-      renderDashboard();
+    STATE.students = JSON.parse(JSON.stringify(estudiantesSoap));
+    persistActiveConfigData();
+    renderStudents();
+    renderGradeTable();
+    renderDashboard();
+    if (estudiantesSoap.length > 0 || docentesSoap.length > 0) {
       showToast('Datos reales cargados: ' + estudiantesSoap.length + ' estudiantes y ' + docentesSoap.length + ' docentes.', 'success');
+    } else {
+      showToast('OASIS no devolvió estudiantes/docentes para esta asignatura.', 'error');
     }
 
     STATE.activities = [];
