@@ -451,40 +451,8 @@ export function initLegacyRuntime() {
       STATE.selectedRACIds = [];
       showToast('Esta asignatura no tiene mapeo automático de RAC/RAAU.', 'error');
     }
-    var cacheKey = carrera + '::' + pao + '::' + asignatura;
-    try {
-      if (!SOAP_CACHE.docentes[cacheKey]) SOAP_CACHE.docentes[cacheKey] = await fetchDocentesPorAsignatura(carrera, pao, asignatura);
-      if (!SOAP_CACHE.estudiantes[cacheKey]) SOAP_CACHE.estudiantes[cacheKey] = await fetchEstudiantesPorAsignatura(carrera, pao, asignatura);
-    } catch (err) {}
-
-    var docentesSoap = SOAP_CACHE.docentes[cacheKey] || [];
-    var estudiantesSoap = SOAP_CACHE.estudiantes[cacheKey] || [];
-
-    STATE.teacherAssignments = STATE.teacherAssignments.filter(function (a) {
-      return !(a.carrera === carrera && a.pao === pao && a.asignatura === asignatura);
-    });
-    STATE.courseConfig.docente = docentesSoap.length > 0 ? docentesSoap[0].name : '';
-    docentesSoap.forEach(function (d) {
-      STATE.teacherAssignments.push({
-        id: 'asig_soap_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-        docenteEmail: d.email || (String(d.name).toLowerCase().replace(/\s+/g, '.') + '@soap.local'),
-        docenteName: d.name,
-        carrera: carrera,
-        pao: pao,
-        asignatura: asignatura
-      });
-    });
-
-    STATE.students = JSON.parse(JSON.stringify(estudiantesSoap));
-    persistActiveConfigData();
-    renderStudents();
-    renderGradeTable();
-    renderDashboard();
-    if (estudiantesSoap.length > 0 || docentesSoap.length > 0) {
-      showToast('Datos reales cargados: ' + estudiantesSoap.length + ' estudiantes y ' + docentesSoap.length + ' docentes.', 'success');
-    } else {
-      showToast('OASIS no devolvió estudiantes/docentes para esta asignatura.', 'error');
-    }
+    await loadDocenteFromOasis(true);
+    await loadStudentsFromOasis(true);
 
     STATE.activities = [];
     save();
@@ -492,6 +460,67 @@ export function initLegacyRuntime() {
     syncActivitiesWithRAAU();
     renderRAAUList();
     renderSelectedSummary();
+  }
+
+  function selectedContext() {
+    return {
+      carrera: document.getElementById('cfg-carrera').value,
+      pao: document.getElementById('cfg-pao').value,
+      asignatura: document.getElementById('cfg-asignatura').value
+    };
+  }
+
+  async function loadDocenteFromOasis(silent) {
+    var ctx = selectedContext();
+    if (!ctx.carrera || !ctx.pao || !ctx.asignatura) {
+      if (!silent) showToast('Seleccione carrera, PAO y asignatura primero.', 'error');
+      return [];
+    }
+    var cacheKey = ctx.carrera + '::' + ctx.pao + '::' + ctx.asignatura;
+    try {
+      if (!SOAP_CACHE.docentes[cacheKey]) SOAP_CACHE.docentes[cacheKey] = await fetchDocentesPorAsignatura(ctx.carrera, ctx.pao, ctx.asignatura);
+    } catch (err) {}
+
+    var docentesSoap = SOAP_CACHE.docentes[cacheKey] || [];
+    STATE.teacherAssignments = STATE.teacherAssignments.filter(function (a) {
+      return !(a.carrera === ctx.carrera && a.pao === ctx.pao && a.asignatura === ctx.asignatura);
+    });
+    STATE.courseConfig.docente = docentesSoap.length > 0 ? docentesSoap[0].name : '';
+    docentesSoap.forEach(function (d) {
+      STATE.teacherAssignments.push({
+        id: 'asig_soap_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        docenteEmail: d.email || (String(d.name).toLowerCase().replace(/\s+/g, '.') + '@soap.local'),
+        docenteName: d.name,
+        carrera: ctx.carrera,
+        pao: ctx.pao,
+        asignatura: ctx.asignatura
+      });
+    });
+    save();
+    updateSidebar();
+    if (!silent) showToast(docentesSoap.length > 0 ? ('Se cargaron ' + docentesSoap.length + ' docentes desde OASIS.') : 'OASIS no devolvió docentes para esta asignatura.', docentesSoap.length > 0 ? 'success' : 'error');
+    return docentesSoap;
+  }
+
+  async function loadStudentsFromOasis(silent) {
+    var ctx = selectedContext();
+    if (!ctx.carrera || !ctx.pao || !ctx.asignatura) {
+      if (!silent) showToast('Seleccione carrera, PAO y asignatura primero.', 'error');
+      return [];
+    }
+    var cacheKey = ctx.carrera + '::' + ctx.pao + '::' + ctx.asignatura;
+    try {
+      if (!SOAP_CACHE.estudiantes[cacheKey]) SOAP_CACHE.estudiantes[cacheKey] = await fetchEstudiantesPorAsignatura(ctx.carrera, ctx.pao, ctx.asignatura);
+    } catch (err) {}
+    var estudiantesSoap = SOAP_CACHE.estudiantes[cacheKey] || [];
+    STATE.students = JSON.parse(JSON.stringify(estudiantesSoap));
+    persistActiveConfigData();
+    renderStudents();
+    renderGradeTable();
+    renderDashboard();
+    save();
+    if (!silent) showToast(estudiantesSoap.length > 0 ? ('Se cargaron ' + estudiantesSoap.length + ' estudiantes desde OASIS.') : 'OASIS no devolvió estudiantes para esta asignatura.', estudiantesSoap.length > 0 ? 'success' : 'error');
+    return estudiantesSoap;
   }
 
   var cfgStep = 0;
@@ -2345,6 +2374,8 @@ export function initLegacyRuntime() {
   window.coordDeleteRAAUItem = coordDeleteRAAUItem;
   window.coordTriggerExcel = coordTriggerExcel;
   window.coordImportExcel = coordImportExcel;
+  window.loadDocenteFromOasis = loadDocenteFromOasis;
+  window.loadStudentsFromOasis = loadStudentsFromOasis;
 
   var carrera = document.getElementById('cfg-carrera');
   var pao = document.getElementById('cfg-pao');
