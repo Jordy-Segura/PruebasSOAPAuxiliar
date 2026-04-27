@@ -171,25 +171,43 @@ function listServiceMethods(client) {
   return [...new Set(methods)];
 }
 
+function listServiceMethodDetails(client) {
+  const described = client.describe() || {};
+  const details = [];
+  Object.values(described).forEach((service) => {
+    Object.values(service || {}).forEach((port) => {
+      Object.entries(port || {}).forEach(([name, meta]) => {
+        const input = meta && meta.input && typeof meta.input === "object" ? Object.keys(meta.input) : [];
+        details.push({ name, input });
+      });
+    });
+  });
+  const unique = [];
+  details.forEach((item) => {
+    if (!unique.some((u) => u.name === item.name)) unique.push(item);
+  });
+  return unique;
+}
+
 function methodMatches(method, candidates) {
   const m = method.toLowerCase();
   return candidates.some((candidate) => m.includes(String(candidate).toLowerCase()));
 }
 
 function pickMethods(client, candidates) {
-  const all = listServiceMethods(client);
-  const dynamic = all.filter((method) => methodMatches(method, candidates));
-  return [...dynamic, ...candidates].filter((value, idx, arr) => arr.indexOf(value) === idx);
+  const all = listServiceMethodDetails(client);
+  const dynamic = all.filter((method) => methodMatches(method.name, candidates));
+  const ordered = [...dynamic, ...candidates.map((name) => ({ name, input: [] }))];
+  return ordered.filter((value, idx, arr) => arr.findIndex((x) => x.name === value.name) === idx);
 }
 
-function buildSoapArgs(intentConfig, payload) {
+function buildSoapArgs(intentConfig, payload, inputNames) {
   const args = {};
   Object.entries(intentConfig.args || {}).forEach(([logicalParam, aliases]) => {
     const value = payload[logicalParam] ?? "";
     const names = Array.isArray(aliases) && aliases.length > 0 ? aliases : [logicalParam];
-    names.forEach((paramName) => {
-      args[paramName] = value;
-    });
+    const selectedName = names.find((paramName) => inputNames.includes(paramName)) || names[0];
+    args[selectedName] = value;
   });
   return args;
 }
@@ -203,17 +221,17 @@ async function executeIntent(intentName, payload = {}) {
   if (!wsdlUrl) throw new Error(`WSDL no configurado: ${intent.wsdl}`);
 
   const client = await createClient(wsdlUrl);
-  const args = buildSoapArgs(intent, payload);
   const methods = pickMethods(client, intent.candidates || []);
 
   let lastError = null;
   for (const method of methods) {
-    const asyncName = `${method}Async`;
+    const args = buildSoapArgs(intent, payload, method.input || []);
+    const asyncName = `${method.name}Async`;
     if (typeof client[asyncName] !== "function") continue;
     try {
       const [result] = await client[asyncName](args);
       const selected = pluckByPath(result, intent.responsePath || "") || result;
-      return { method, result: selected, raw: result };
+      return { method: method.name, result: selected, raw: result };
     } catch (error) {
       lastError = error;
     }

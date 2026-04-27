@@ -498,6 +498,8 @@ export function initLegacyRuntime() {
     });
     save();
     updateSidebar();
+    var docenteInput = document.getElementById('cfg-docente');
+    if (docenteInput) docenteInput.value = STATE.courseConfig.docente || '';
     if (!silent) showToast(docentesSoap.length > 0 ? ('Se cargaron ' + docentesSoap.length + ' docentes desde OASIS.') : 'OASIS no devolvió docentes para esta asignatura.', docentesSoap.length > 0 ? 'success' : 'error');
     return docentesSoap;
   }
@@ -515,7 +517,7 @@ export function initLegacyRuntime() {
     var estudiantesSoap = SOAP_CACHE.estudiantes[cacheKey] || [];
     STATE.students = JSON.parse(JSON.stringify(estudiantesSoap));
     persistActiveConfigData();
-    renderStudents();
+    renderEstudiantes();
     renderGradeTable();
     renderDashboard();
     save();
