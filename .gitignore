@@ -1,1 +1,8 @@
-Nothing should be ignored based on the provided file changes, as they only include source files (.js, .html) without any build artifacts, dependencies, or temporary files.
+node_modules/
+dist/
+build/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
